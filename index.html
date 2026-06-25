@@ -1003,10 +1003,29 @@ function renderRanking(){
     return;
   }
   let html=`<div style="font-size:11px;color:var(--muted);margin-bottom:12px;font-style:italic">${total} de 72 partidos con resultado oficial</div>`;
-  html+=`<table class="ranking-table"><thead><tr><th>#</th><th style="text-align:left">Jugador</th><th>Pts</th><th>🎯 Exacto (4)</th><th style="color:#c084fc">↕ Dif+gan (3)</th><th>✅ Ganador (2)</th><th>Jugados</th></tr></thead><tbody>`;
+  html+=`<table class="ranking-table"><thead><tr>
+    <th>#</th>
+    <th style="text-align:left">Jugador</th>
+    <th>Pts</th>
+    <th>🎯 Exacto</th>
+    <th style="color:#c084fc">↕ Dif+1X2</th>
+    <th>1️⃣ 1X2</th>
+    <th>🏅 Clasif.</th>
+    <th>Jugados</th>
+  </tr></thead><tbody>`;
   stats.forEach((s,i)=>{
     const pc=i===0?'gold':i===1?'silver':i===2?'bronze':'other';
-    html+=`<tr><td><span class="rank-pos ${pc}">${i+1}</span></td><td><span class="rank-name">${s.p}</span></td><td><span class="rank-pts">${s.pts}</span></td><td><span class="rank-exact">${s.exact}</span></td><td style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:16px;color:#c084fc">${s.diff-s.exact}</span></td><td><span class="rank-winner">${s.win-s.diff}</span></td><td><span class="rank-played">${s.played}</span></td></tr>`;
+    const clasificadoPts = calcClasificadoGruposPts(s.p);
+    html+=`<tr>
+      <td><span class="rank-pos ${pc}">${i+1}</span></td>
+      <td><span class="rank-name">${s.p}</span></td>
+      <td><span class="rank-pts">${s.pts}</span></td>
+      <td><span class="rank-exact">${s.exact}</span></td>
+      <td style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:16px;color:#c084fc">${s.diff-s.exact}</td>
+      <td><span class="rank-winner">${s.win-s.diff}</span></td>
+      <td style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:16px;color:var(--gold)">${clasificadoPts > 0 ? clasificadoPts : '—'}</td>
+      <td><span class="rank-played">${s.played}</span></td>
+    </tr>`;
   });
   html+='</tbody></table>';
   el.innerHTML=html;
@@ -1209,6 +1228,7 @@ function renderHistorial(){
       const faseRules = getRulesForGame(g);
       const pts = hitPts(ph, pa, r.home, r.away, faseRules);
       acum[p] += pts;
+      // pts breakdown for display
 
       const colors = {
         'hit-exact':  {bg:'rgba(245,197,24,.15)', color:'var(--gold)'},
