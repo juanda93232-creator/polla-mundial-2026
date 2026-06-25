@@ -601,7 +601,16 @@ async function syncPendingMatches() {
       if (!byDate[g.fecha]) byDate[g.fecha] = [];
       byDate[g.fecha].push(g);
     });
-    for (const [date, games] of Object.entries(byDate)) {
+    // Also add UTC dates in case SportAPI catalogs by UTC
+    const utcDates = new Set();
+    pending.forEach(g => {
+      const ko = KICKOFFS[g.partido];
+      if (ko) utcDates.add(ko.slice(0,10));
+    });
+    const allDates = [...new Set([...Object.keys(byDate), ...utcDates])];
+
+    const processedGames = new Set();
+    for (const date of allDates) {
       try {
         const data = await fetchDateFromSport(date);
         const events = data.events || [];
@@ -610,16 +619,21 @@ async function syncPendingMatches() {
           const awayN = ev.awayTeam?.name || '';
           const game  = findGame(homeN, awayN);
           if (!game) continue;
+          if (processedGames.has(game.partido)) continue;
           const statusCode = ev.status?.type || '';
           const isFinished = statusCode === 'finished';
           const isLive     = statusCode === 'inprogress';
           if (!isFinished && !isLive) continue;
-          let rh = ev.homeScore?.current ?? ev.homeScore?.normaltime ?? null;
-          let ra = ev.awayScore?.current ?? ev.awayScore?.normaltime ?? null;
+          // Try multiple score fields
+          let rh = ev.homeScore?.current ?? ev.homeScore?.normaltime ?? ev.homeScore?.display ?? null;
+          let ra = ev.awayScore?.current ?? ev.awayScore?.normaltime ?? ev.awayScore?.display ?? null;
           if (rh === null || ra === null) continue;
+          rh = parseInt(rh); ra = parseInt(ra);
+          if (isNaN(rh) || isNaN(ra)) continue;
           if (resolveTeam(homeN) !== resolveTeam(game.casa)) [rh, ra] = [ra, rh];
           const st = isLive ? 'live' : 'ft';
           await upsertResult(game.partido, rh, ra, st);
+          processedGames.add(game.partido);
           synced++;
         }
         await new Promise(r => setTimeout(r, 300));
@@ -747,6 +761,7 @@ async function manualSync() {
     if (msg) msg.textContent = `BD: ${totalBD} partidos`;
 
     const pending = getMatchesToFetch();
+    console.log('Pending matches:', pending.map(g => g.partido));
     if (msg) msg.textContent = `BD: ${totalBD} partidos · Pendientes: ${pending.length}`;
 
     if (!pending.length) {
