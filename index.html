@@ -442,16 +442,14 @@ async function loadFromJB() {
   if (data.reglas) reglas = { ...JSON.parse(JSON.stringify(DEFAULT_REGLAS)), ...data.reglas };
   updateLastSyncLabel();
 
-  // Load pronosticos (only if not already loaded)
-  if (Object.keys(PRONOSTICOS).length === 0) {
-    const res2 = await fetch(`https://api.jsonbin.io/v3/b/${JB_BIN2}/latest`, {
-      headers: {'X-Master-Key': JB_KEY, 'X-Bin-Meta': 'false'}
-    });
-    if (!res2.ok) throw new Error(`JSONBin pronosticos ${res2.status}`);
-    const data2 = await res2.json();
-    PRONOSTICOS = data2.pronosticos || {};
-    buildGames();
-  }
+  // Load pronosticos always
+  const res2 = await fetch(`https://api.jsonbin.io/v3/b/${JB_BIN2}/latest`, {
+    headers: {'X-Master-Key': JB_KEY, 'X-Bin-Meta': 'false'}
+  });
+  if (!res2.ok) throw new Error(`JSONBin pronosticos ${res2.status}`);
+  const data2 = await res2.json();
+  PRONOSTICOS = data2.pronosticos || {};
+  buildGames();
 }
 
 // Build GAMES array from PRONOSTICOS
