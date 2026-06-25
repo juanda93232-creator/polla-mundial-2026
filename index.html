@@ -287,13 +287,18 @@ const FASES = [
 ];
 
 // Reglas por defecto
+// Sistema de puntos acumulativo:
+// Signo 1X2 = ganador pts (base)
+// + Diferencia correcta = diff pts (bonus)
+// + Marcador exacto = exacto pts (bonus adicional)
+// Equipo clasificado = clasificado pts (separado)
 const DEFAULT_REGLAS = {
-  grupos:  { exacto:4, diff:3, ganador:2, fallo:0, bonus_goleada:0, bonus_cero:0, penalizacion:0, multiplicador:1 },
-  r32:     { exacto:4, diff:3, ganador:2, fallo:0, bonus_goleada:0, bonus_cero:0, penalizacion:0, multiplicador:1 },
-  r16:     { exacto:4, diff:3, ganador:2, fallo:0, bonus_goleada:0, bonus_cero:0, penalizacion:0, multiplicador:1 },
-  cuartos: { exacto:4, diff:3, ganador:2, fallo:0, bonus_goleada:0, bonus_cero:0, penalizacion:0, multiplicador:1 },
-  semis:   { exacto:4, diff:3, ganador:2, fallo:0, bonus_goleada:0, bonus_cero:0, penalizacion:0, multiplicador:1 },
-  final:   { exacto:4, diff:3, ganador:2, fallo:0, bonus_goleada:0, bonus_cero:0, penalizacion:0, multiplicador:1 },
+  grupos:  { exacto:1, diff:1, ganador:2, fallo:0, clasificado:1, multiplicador:1 },
+  r32:     { exacto:1, diff:1, ganador:2, fallo:0, clasificado:1, multiplicador:1 },
+  r16:     { exacto:1, diff:1, ganador:2, fallo:0, clasificado:1, multiplicador:1 },
+  cuartos: { exacto:1, diff:1, ganador:2, fallo:0, clasificado:1, multiplicador:1 },
+  semis:   { exacto:1, diff:1, ganador:2, fallo:0, clasificado:1, multiplicador:1 },
+  final:   { exacto:1, diff:1, ganador:2, fallo:0, clasificado:1, multiplicador:1 },
   premios: {
     campeon:1, subcampeon:1, tercer:1,
     balon_oro:1, balon_plata:1, balon_bronce:1,
@@ -816,37 +821,28 @@ function winner(h,a){ return h>a?'home':a>h?'away':'draw'; }
 function hitClass(ph,pa,rh,ra){
   if(rh===null||ra===null||rh===''||ra==='') return '';
   rh=+rh; ra=+ra; ph=+ph; pa=+pa;
-  if(ph===rh && pa===ra) return 'hit-exact';       // marcador exacto: 4 pts
-  if((ph-pa)===(rh-ra) && winner(ph,pa)===winner(rh,ra)) return 'hit-diff'; // dif+ganador: 3 pts
-  if(winner(ph,pa)===winner(rh,ra)) return 'hit-winner'; // solo ganador: 2 pts
+  if(ph===rh && pa===ra) return 'hit-exact';       // exacto: signo(2)+diff(1)+exact(1) = 4
+  if((ph-pa)===(rh-ra) && winner(ph,pa)===winner(rh,ra)) return 'hit-diff'; // signo(2)+diff(1) = 3
+  if(winner(ph,pa)===winner(rh,ra)) return 'hit-winner'; // solo signo = 2
   return 'hit-miss';
 }
-function hitPts(ph,pa,rh,ra,r){
-  // r = reglas de la fase (objeto con exacto/diff/ganador/fallo/bonus_goleada/bonus_cero/penalizacion/multiplicador)
-  r = r || reglas.grupos;
-  const c = hitClass(ph,pa,rh,ra);
-  ph=+ph; pa=+pa; rh=+rh; ra=+ra;
-  let pts = 0;
-  if(c==='hit-exact')       pts = r.exacto;
-  else if(c==='hit-diff')   pts = r.diff;
-  else if(c==='hit-winner') pts = r.ganador;
-  else                      pts = r.fallo - (r.penalizacion||0);
 
-  // Bonus goleada: ganador gana por 3+ goles
-  if(c!=='hit-miss' && r.bonus_goleada>0) {
-    const difReal = Math.abs(rh-ra);
-    const difPron = Math.abs(ph-pa);
-    if(difPron>=3 && difReal>=3) pts += r.bonus_goleada;
-  }
-  // Bonus portería a cero: pronosticaste 0 goles al rival y acertaste
-  if(r.bonus_cero>0) {
-    const realAway = ra, pronAway = pa;
-    const realHome = rh, pronHome = ph;
-    if((pronAway===0 && realAway===0) || (pronHome===0 && realHome===0)) pts += r.bonus_cero;
-  }
-  // Multiplicador de fase
+// Nuevo sistema de puntos acumulativo
+function calcMatchPts(ph, pa, rh, ra, faseRules) {
+  if(rh===null||ra===null) return 0;
+  ph=+ph; pa=+pa; rh=+rh; ra=+ra;
+  const r = faseRules || reglas.grupos;
+  let pts = 0;
+  const w = winner(ph,pa) === winner(rh,ra);
+  if(!w) return 0; // sin signo = 0 pts
+  pts += r.ganador;                           // signo 1X2 = 2 pts
+  if((ph-pa)===(rh-ra)) pts += r.diff;       // + diferencia = 1 pt
+  if(ph===rh && pa===ra) pts += r.exacto;    // + exacto = 1 pt
   pts = pts * (r.multiplicador||1);
   return Math.max(0, pts);
+}
+function hitPts(ph,pa,rh,ra,r){
+  return calcMatchPts(ph,pa,rh,ra,r);
 }
 
 // ═══════════════════════════════════════════════════════
@@ -869,6 +865,49 @@ function setTab(tab){
 // ═══════════════════════════════════════════════════════
 // results tiene claves tipo: "r32_Corea del Sur-Canadá" = {home,away,status}
 // PRONOSTICOS[player].r32 = [{partido:"X-Y", home, away}, ...]
+
+// Calcula puntos por equipos clasificados correctamente
+// Para grupos: compara equipos en R32 del participante vs clasificados reales
+// Para eliminatorias: si el equipo que pronosticó avanzar realmente avanzó
+function calcClasificadoGruposPts(player) {
+  const p = PRONOSTICOS[player];
+  if (!p || !p.r32) return 0;
+  const r = (reglas && reglas.grupos) ? reglas.grupos : DEFAULT_REGLAS.grupos;
+  const ptsPerTeam = r.clasificado || 1;
+  let pts = 0;
+
+  // Equipos reales clasificados: los que aparecen en los partidos de R32 reales
+  const equiposClasificadosReales = new Set();
+  Object.keys(results).forEach(key => {
+    if (key.startsWith('r32_')) {
+      const partido = key.replace('r32_', '');
+      const partes = partido.split('-');
+      if (partes.length === 2) {
+        equiposClasificadosReales.add(norm(partes[0]));
+        equiposClasificadosReales.add(norm(partes[1]));
+      }
+    }
+  });
+
+  if (equiposClasificadosReales.size === 0) return 0;
+
+  // Equipos que el participante predijo clasificarían (de sus partidos R32)
+  const equiposPronR32 = new Set();
+  (p.r32 || []).forEach(m => {
+    const partes = m.partido.split('-');
+    if (partes.length === 2) {
+      equiposPronR32.add(norm(partes[0]));
+      equiposPronR32.add(norm(partes[1]));
+    }
+  });
+
+  // Sumar 1 pt por cada equipo pronosticado que realmente clasificó
+  equiposPronR32.forEach(equipo => {
+    if (equiposClasificadosReales.has(equipo)) pts += ptsPerTeam;
+  });
+
+  return pts;
+}
 
 function calcEliminatoriasPts(player) {
   const p = PRONOSTICOS[player];
@@ -951,6 +990,7 @@ function renderRanking(){
       else if(cls==='hit-diff'){diff++;win++;}
       else if(cls==='hit-winner'){win++;}
     });
+    pts += calcClasificadoGruposPts(p);
     pts += calcEliminatoriasPts(p);
     pts += calcPremiosPts(p);
     return{p,pts,exact,diff,win,played};
@@ -1205,14 +1245,12 @@ function renderHistorial(){
 //  RENDER REGLAS
 // ═══════════════════════════════════════════════════════
 const REGLA_DEFS = [
-  { key:'exacto',        label:'🎯 Marcador exacto',         desc:'Pronóstico idéntico al resultado real' },
-  { key:'diff',          label:'↕ Diferencia + ganador',     desc:'Misma diferencia de goles y mismo ganador' },
-  { key:'ganador',       label:'✅ Solo ganador',            desc:'Acierta quién gana (o empate) sin diferencia' },
-  { key:'fallo',         label:'❌ Fallo base',              desc:'Puntos base cuando falla (normalmente 0)' },
-  { key:'bonus_goleada', label:'🔥 Bonus goleada (3+ goles)',desc:'Extra si pronosticaste victoria por 3+ y acertaste diferencia' },
-  { key:'bonus_cero',    label:'🧤 Bonus portería a cero',   desc:'Extra si pronosticaste 0 goles al rival y acertaste' },
-  { key:'penalizacion',  label:'⚠️ Penalización por fallo',  desc:'Se resta del fallo base cuando se falla' },
-  { key:'multiplicador', label:'✖️ Multiplicador de fase',   desc:'Multiplica todos los puntos de esta fase' },
+  { key:'ganador',       label:'1️⃣ Signo 1X2 (base)',        desc:'Acierta quién gana o empata — puntos base' },
+  { key:'diff',          label:'↕ Diferencia de goles',      desc:'Bonus si además aciertas la diferencia exacta' },
+  { key:'exacto',        label:'🎯 Marcador exacto',          desc:'Bonus adicional si aciertas el marcador exacto' },
+  { key:'clasificado',   label:'🏅 Equipo clasificado',       desc:'Pts por cada equipo que pronosticaste clasificaría' },
+  { key:'fallo',         label:'❌ Fallo base',               desc:'Puntos cuando falla el signo (normalmente 0)' },
+  { key:'multiplicador', label:'✖️ Multiplicador de fase',    desc:'Multiplica todos los puntos de esta fase' },
 ];
 
 function renderReglas() {
