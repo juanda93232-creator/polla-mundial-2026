@@ -189,9 +189,9 @@
   <!-- RANKING -->
   <div id="tab-ranking">
     <div class="score-rules">
-      <div class="rule-chip exact">🎯 Marcador exacto = 4 pts</div>
-      <div class="rule-chip diff">↕ Diferencia + ganador = 3 pts</div>
-      <div class="rule-chip winner">✅ Solo ganador = 2 pts</div>
+      <div class="rule-chip exact">🎯 Exacto = 4 pts</div>
+      <div class="rule-chip diff">↕ Dif + 1X2 = 3 pts</div>
+      <div class="rule-chip winner">1️⃣ 1X2 = 2 pts</div>
       <div class="rule-chip miss">❌ Fallo = 0 pts</div>
     </div>
     <div class="ranking-wrap"><div id="rankingContent"></div></div>
@@ -1247,7 +1247,99 @@ function renderHistorial(){
     bHtml += rowHtml;
   });
 
-  // Fila total
+  // ── Fila clasificación grupos ──
+  // Solo mostrar si hay partidos R32 reales en results (significa que grupos terminaron)
+  const equiposClasifReales = new Set();
+  Object.keys(results).forEach(key => {
+    if (key.startsWith('r32_')) {
+      const partes = key.replace('r32_','').split('-');
+      if (partes.length === 2) {
+        equiposClasifReales.add(norm(partes[0]));
+        equiposClasifReales.add(norm(partes[1]));
+      }
+    }
+  });
+
+  const hayClasifGrupos = equiposClasifReales.size > 0;
+  const acumClasif = {};
+  PLAYERS.forEach(p => acumClasif[p] = 0);
+
+  if (hayClasifGrupos) {
+    PLAYERS.forEach(p => {
+      const pts = calcClasificadoGruposPts(p);
+      acumClasif[p] = pts;
+      acum[p] += pts;
+    });
+
+    bHtml += `<tr style="background:rgba(245,197,24,.08);border-top:2px solid var(--gold);border-bottom:2px solid var(--gold)">
+      <td style="padding:10px 8px;position:sticky;left:0;background:rgba(30,40,20,.95);border-right:1px solid var(--border)">
+        <div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:14px;color:var(--gold)">🏅 CLASIFICACIÓN — FASE DE GRUPOS</div>
+        <div style="font-size:10px;color:var(--muted);margin-top:2px">Puntos por equipos que pronosticaste clasificarían al R32</div>
+      </td>
+      <td style="padding:10px 8px;text-align:center;font-size:11px;color:var(--muted)">+pts</td>`;
+    PLAYERS.forEach(p => {
+      const pts = acumClasif[p];
+      bHtml += `<td style="padding:10px 4px;text-align:center">
+        <span style="font-family:'Barlow Condensed',sans-serif;font-weight:900;font-size:18px;color:var(--gold)">+${pts}</span>
+        <div style="font-size:10px;color:var(--muted)">${acum[p]}</div>
+      </td>`;
+    });
+    bHtml += '</tr>';
+  }
+
+  // ── Fila clasificación R32 ──
+  const equiposClasifR16 = new Set();
+  Object.keys(results).forEach(key => {
+    if (key.startsWith('r16_')) {
+      const partes = key.replace('r16_','').split('-');
+      if (partes.length === 2) {
+        equiposClasifR16.add(norm(partes[0]));
+        equiposClasifR16.add(norm(partes[1]));
+      }
+    }
+  });
+
+  if (equiposClasifR16.size > 0) {
+    const acumClasifR32 = {};
+    PLAYERS.forEach(p => {
+      const r = (reglas && reglas.r32) ? reglas.r32 : DEFAULT_REGLAS.r32;
+      const ptsPerTeam = r.clasificado || 1;
+      let pts = 0;
+      const pron = PRONOSTICOS[p];
+      if (pron && pron.r16) {
+        const equiposPron = new Set();
+        pron.r16.forEach(m => {
+          const partes = m.partido.split('-');
+          if (partes.length === 2) {
+            equiposPron.add(norm(partes[0]));
+            equiposPron.add(norm(partes[1]));
+          }
+        });
+        equiposPron.forEach(eq => {
+          if (equiposClasifR16.has(eq)) pts += ptsPerTeam;
+        });
+      }
+      acumClasifR32[p] = pts;
+      acum[p] += pts;
+    });
+
+    bHtml += `<tr style="background:rgba(245,197,24,.08);border-top:2px solid var(--gold);border-bottom:2px solid var(--gold)">
+      <td style="padding:10px 8px;position:sticky;left:0;background:rgba(30,40,20,.95);border-right:1px solid var(--border)">
+        <div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:14px;color:var(--gold)">🏅 CLASIFICACIÓN — R32</div>
+        <div style="font-size:10px;color:var(--muted);margin-top:2px">Puntos por equipos que pronosticaste clasificarían al R16</div>
+      </td>
+      <td style="padding:10px 8px;text-align:center;font-size:11px;color:var(--muted)">+pts</td>`;
+    PLAYERS.forEach(p => {
+      const pts = acumClasifR32[p];
+      bHtml += `<td style="padding:10px 4px;text-align:center">
+        <span style="font-family:'Barlow Condensed',sans-serif;font-weight:900;font-size:18px;color:var(--gold)">+${pts}</span>
+        <div style="font-size:10px;color:var(--muted)">${acum[p]}</div>
+      </td>`;
+    });
+    bHtml += '</tr>';
+  }
+
+  // ── Fila total ──
   bHtml += `<tr style="background:var(--surface);border-top:2px solid var(--gold)">
     <td style="padding:12px 8px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:13px;letter-spacing:1px;color:var(--gold);text-transform:uppercase;position:sticky;left:0;background:var(--surface);border-right:1px solid var(--border)">🏆 TOTAL</td>
     <td style="padding:12px 8px;text-align:center;color:var(--muted);font-size:12px">${played.length} partidos</td>`;
@@ -1443,6 +1535,74 @@ async function resetReglas() {
   renderAll();
 }
 
+function showEditModal() {
+  if (!isAdmin) return;
+  const sel = document.getElementById('editPartido');
+  sel.innerHTML = '<option value="">Selecciona un partido...</option>';
+  // Add all GAMES sorted
+  GAMES.forEach(g => {
+    const hasResult = results[g.partido] && results[g.partido].home !== null;
+    const opt = document.createElement('option');
+    opt.value = g.partido;
+    opt.textContent = `${g.partido}${hasResult ? ' (' + results[g.partido].home + '-' + results[g.partido].away + ')' : ' (sin resultado)'}`;
+    sel.appendChild(opt);
+  });
+
+  // Update labels when partido changes
+  sel.onchange = function() {
+    const p = sel.value;
+    if (!p) return;
+    const parts = p.split(' VS ');
+    if (parts.length === 2) {
+      document.getElementById('editHomeLabel').textContent = parts[0];
+      document.getElementById('editAwayLabel').textContent = parts[1];
+    }
+    // Pre-fill existing result
+    const r = results[p];
+    if (r && r.home !== null && r.home !== undefined) {
+      document.getElementById('editHome').value = r.home;
+      document.getElementById('editAway').value = r.away;
+    } else {
+      document.getElementById('editHome').value = '';
+      document.getElementById('editAway').value = '';
+    }
+  };
+
+  const modal = document.getElementById('editModal');
+  modal.style.display = 'flex';
+  document.getElementById('editMsg').textContent = '';
+}
+
+function closeEditModal() {
+  document.getElementById('editModal').style.display = 'none';
+}
+
+async function saveEditResult() {
+  if (!isAdmin) return;
+  const partido = document.getElementById('editPartido').value;
+  const home = document.getElementById('editHome').value;
+  const away = document.getElementById('editAway').value;
+  const msg = document.getElementById('editMsg');
+
+  if (!partido) { msg.style.color='#ef4444'; msg.textContent = 'Selecciona un partido'; return; }
+  if (home === '' || away === '') { msg.style.color='#ef4444'; msg.textContent = 'Ingresa ambos marcadores'; return; }
+
+  msg.style.color='#f5c518'; msg.textContent = 'Guardando...';
+
+  results[partido] = { home: +home, away: +away, status: 'ft' };
+
+  try {
+    await saveToJB(false);
+    renderAll();
+    msg.style.color='#4ade80';
+    msg.textContent = `✓ ${partido} guardado: ${home}-${away}`;
+    setTimeout(() => closeEditModal(), 1500);
+  } catch(e) {
+    msg.style.color='#ef4444';
+    msg.textContent = 'Error: ' + e.message;
+  }
+}
+
 function renderAll(){renderRanking();renderHistorial();renderMulti();renderSingle();renderCards();}
 
 // ═══════════════════════════════════════════════════════
@@ -1505,6 +1665,7 @@ function logoutAdmin() {
   isAdmin = false;
   document.getElementById('adminSyncBtn').style.display = 'none';
   document.getElementById('adminLogoutBtn').style.display = 'none';
+  document.getElementById('adminEditBtn').style.display = 'none';
   document.getElementById('adminMsg').textContent = 'Sesión cerrada';
   document.getElementById('adminMsg').style.color = '#7a8499';
   document.getElementById('adminPanel').style.display = 'none';
